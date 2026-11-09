@@ -50,6 +50,26 @@ Altar; yapay zeka iletişimi, profesyonel Python IDE geliştirme ortamı, 5-katm
 * **Akıllı Otomatik Kaydırma Anahtarı (`📜 Oto Kaydır`):** Sohbet kutusunun hemen üzerindeki toggle switch. Açıkken yeni mesajlar geldikçe sayfayı otomatik alta kaydırır; kapalıyken geçmiş mesajları ve kodları incelerken sayfa konumunuzu sabit tutar.
 * **OpenRouter Canlı API Yöneticisi:** `sk-or-v1-...` anahtarlarını arayüzden canlı doğrulama (`/api/v1/auth/key`), hesap bakiyesi sorgulama, GPT-4o, Claude 3.5 Sonnet, DeepSeek ve Llama modellerini tek tıkla aktif etme ve `.env` dosyasıyla otomatik çift yönlü senkronizasyon.
 
+#### Çok Makineli Ollama Çıkarımı (İsteğe Bağlı)
+Birden fazla GPU makinesini GbE üzerinden kullanmak için her worker makinesine aynı modeli kurun; ardından Altar istemcisinin `.env` dosyasına worker adreslerini ekleyin:
+
+```env
+ALTAR_OLLAMA_HOSTS="http://192.168.1.41:11434,http://192.168.1.42:11434"
+ALTAR_OLLAMA_CONNECT_TIMEOUT="10"
+ALTAR_OLLAMA_READ_TIMEOUT="180"
+```
+
+Altar her üretim isteğini, seçili modeli içeren sağlıklı bir Ollama worker'ına sırayla gönderir. Ağdan yalnızca sohbet bağlamı ve varsa görsel geçer; model ağırlıkları geçmez. `ALTAR_OLLAMA_HOSTS` ayarlanmazsa uygulama eskisi gibi yalnızca `http://localhost:11434` kullanır. CPU'lu Altar istemcisi, yerel Ollama kurmadan GPU worker'larına bağlanabilir.
+
+Her worker'da Ollama'yı yalnızca güvenilen özel LAN IP'sine bağlayın:
+
+```powershell
+$env:OLLAMA_HOST="192.168.1.41:11434"
+ollama serve
+```
+
+Ollama API'si kimlik doğrulaması sağlamaz. Port 11434'ü internete açmayın, varsayılan olarak `0.0.0.0` kullanmayın ve Windows Güvenlik Duvarı giriş kuralını yalnızca güvenilen istemci/worker IP'leriyle sınırlandırın. Bir worker bağlantısı koparsa Altar diğer uyumlu worker'ı dener; yanıt akışı başladıktan sonra bağlantı koparsa çift veya yarım çıktı oluşturmamak için otomatik tekrar yapılmaz.
+
 ---
 
 ### 3. Siber Güvenlik, Ağ IPS & Canlı Ağ Radarı

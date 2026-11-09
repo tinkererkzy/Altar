@@ -282,20 +282,36 @@ Altar'ı internet olmadan %100 çevrimdışı çalıştırmak için:
    ```
 *(Alternatif olarak Altar açılışında 'Ollama Kurucu' butonuna basarak tek tıkla otomatik kurdurabilirsiniz).*
 
-### 5. Bulut API Yapılandırması (İsteğe Bağlı)
+### 5. Çok Makineli Ollama Çıkarımı (İsteğe Bağlı)
+Birden fazla GPU makinesini GbE üzerinden kullanmak için her worker'a aynı modeli kurun ve Altar istemcisinin `.env` dosyasına worker adreslerini yazın:
+```env
+ALTAR_OLLAMA_HOSTS="http://192.168.1.41:11434,http://192.168.1.42:11434"
+ALTAR_OLLAMA_CONNECT_TIMEOUT="10"
+ALTAR_OLLAMA_READ_TIMEOUT="180"
+```
+Altar, her üretim isteğini modelin bulunduğu sağlıklı bir Ollama worker'ına sırayla gönderir; ağdan yalnızca sohbet bağlamı/görsel gibi istek verisi geçer, model ağırlıkları geçmez. `ALTAR_OLLAMA_HOSTS` ayarlanmadığında davranış değişmez ve yalnızca `http://localhost:11434` kullanılır. CPU'lu bir Altar istemcisi, yerel Ollama kurmadan GPU worker'larına bağlanabilir.
+
+Her GPU worker'ında Ollama'yı yalnızca güvenilen özel LAN IP'sine bağlayın (örnek):
+```powershell
+$env:OLLAMA_HOST="192.168.1.41:11434"
+ollama serve
+```
+Windows güvenlik duvarında 11434 girişini yalnızca istemci/worker özel ağ IP'leriyle sınırlandırın. Ollama API'si kimlik doğrulaması sağlamaz; `0.0.0.0` ile varsayılan olarak bağlamayın ve 11434'ü internete açmayın. Worker bağlantısı koparsa Altar bir sonraki uyumlu worker'ı dener; tüm worker'lar erişilemezse hata kullanılan endpointlerle birlikte gösterilir. Akış başladıktan sonra bağlantı koparsa yanıt otomatik tekrarlanmaz; çift/yarım çıktı üretmemek için isteği yeniden gönderin.
+
+### 6. Bulut API Yapılandırması (İsteğe Bağlı)
 Altar bulut modellerini (Google Gemini veya OpenRouter - GPT-4o, Claude 3.5, DeepSeek) kullanmak isterseniz, anahtarınızı Altar arayüzündeki **`OpenRouter API Anahtarı Tanımla`** penceresinden tek tıkla canlı doğrulayabilir veya proje kök dizinindeki `.env` dosyasına ekleyebilirsiniz:
 ```env
 GEMINI_API_KEY="your_gemini_api_key_here"
 OPENROUTER_API_KEY="sk-or-v1-your_openrouter_key_here"
 ```
 
-### 6. Uygulamayı Başlatma
+### 7. Uygulamayı Başlatma
 ```bash
 python "Local AI.py"
 ```
 Veya oluşturulan **`Altar`** kısayoluna çift tıklayarak tek tıkla başlatabilirsiniz.
 
-### 7. Tek Başına Çalışan EXE (Program) Oluşturma
+### 8. Tek Başına Çalışan EXE (Program) Oluşturma
 Projeyi Python ortamına bağımlı olmadan bağımsız bir masaüstü uygulaması (`.exe`) haline getirmek için iki pratik yöntem mevcuttur:
 
 #### Yöntem A: Tek Tıkla Otomatik Derleme (.bat)
