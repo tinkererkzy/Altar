@@ -29,10 +29,19 @@ if __name__ == "__main__":
     if dizin not in sys.path:
         sys.path.insert(0, dizin)
 
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(os.path.join(dizin, ".env"), override=False)
+    except Exception:
+        pass
+
+    # Uzak worker'lar yapılandırıldıysa CPU istemci makinesinde yerel Ollama kurulumu gerekmez.
+    uzak_ollama_yapilandirildi = bool(os.getenv("ALTAR_OLLAMA_HOSTS", "").strip())
+
     # İleride EXE programı olarak dağıtıldığında otomatik ilk kurulum kontrolü
     try:
         from altar_ollama_kurucu import ollama_kurulum_gerekli_mi, otomatik_sinematik_kurulum_baslat
-        if ollama_kurulum_gerekli_mi():
+        if not uzak_ollama_yapilandirildi and ollama_kurulum_gerekli_mi():
             otomatik_sinematik_kurulum_baslat()
             # Kurulum tamamlandıktan sonra çık (kurucu zaten ana programı başlatır)
             sys.exit(0)

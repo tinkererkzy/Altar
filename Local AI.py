@@ -46,11 +46,15 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 import customtkinter as ctk
-import ollama
 from tkinter import messagebox
 from bs4 import BeautifulSoup
 from duckduckgo_search import DDGS
 from dotenv import load_dotenv
+from altar_ollama_havuzu import (
+    OllamaHavuzIstemicisi,
+    OllamaHavuzYapilandirmaHatasi,
+    OllamaHostHavuzu,
+)
 
 # =========================================================
 # GÖRSEL ARAYÜZ KATMANINI (altar_arayuz.py) İÇERİ AKTARMA
@@ -1874,17 +1878,24 @@ class AltarMainUI(AltarArayuzMerkezi):
 
         # ---------------- OLLAMA YEREL ÇEKİRDEK BAĞLANTISI VE MODEL TESPİTİ ----------------
         self.yuklu_modeller = []
+        self.ollama_havuzu = None
+        self.ollama_hata = ""
         try:
-            self.client = ollama.Client(host='http://localhost:11434')
-            modeller_ham = self.client.list().get('models', [])
-            self.yuklu_modeller = [m['model'] for m in modeller_ham]
+            self.ollama_havuzu = OllamaHostHavuzu.ortamdan_olustur()
+            self.client = OllamaHavuzIstemicisi(self.ollama_havuzu)
+            self.yuklu_modeller = self.ollama_havuzu.modelleri_yenile()
 
             if not self.yuklu_modeller:
                 self.yuklu_modeller = ["Yüklü Model Bulunamadı"]
             else:
                 self._secili_yerel_model_bellek = self.en_uygun_yerel_modeli_coz("Sohbet")
-        except Exception:
+        except OllamaHavuzYapilandirmaHatasi as e:
             self.client = None
+            self.ollama_hata = str(e)
+            self.yuklu_modeller = ["Ollama Yapılandırma Hatası"]
+        except Exception as e:
+            self.client = None
+            self.ollama_hata = str(e)
             self.yuklu_modeller = ["Ollama Servisi Kapalı"]
 
         # ---------------- OPENROUTER ÇEVRİMİÇİ BULUT ÇEKİRDEK BAĞLANTISI (ASENKRON RADAR) ----------------
@@ -1967,8 +1978,9 @@ class AltarMainUI(AltarArayuzMerkezi):
             with self._ollama_kilit:
                 if not self.yapay_zeka_aktif:
                     return
-                requests.post(
-                    "http://localhost:11434/api/generate",
+                self.ollama_havuzu.post(
+                    "/api/generate",
+                    model_adi=model_adi,
                     json={
                         "model": model_adi,
                         "prompt": "",
@@ -1996,7 +2008,7 @@ class AltarMainUI(AltarArayuzMerkezi):
                     return
                 bellekteki_modeller = {self._secili_yerel_model_bellek}
                 try:
-                    ps_yanit = requests.get("http://localhost:11434/api/ps", timeout=3)
+                    ps_yanit = self.ollama_havuzu.get("/api/ps", timeout=3)
                     if ps_yanit.status_code == 200:
                         for m in ps_yanit.json().get("models", []):
                             m_adi = m.get("model") or m.get("name")
@@ -2010,8 +2022,9 @@ class AltarMainUI(AltarArayuzMerkezi):
                         return
                     if model_adi and "Bulunamadı" not in model_adi:
                         try:
-                            requests.post(
-                                "http://localhost:11434/api/generate",
+                            self.ollama_havuzu.post(
+                                "/api/generate",
+                                model_adi=model_adi,
                                 json={"model": model_adi, "prompt": "", "keep_alive": 0, "think": False},
                                 timeout=4
                             )
@@ -2052,8 +2065,9 @@ class AltarMainUI(AltarArayuzMerkezi):
 
         resp = None
         try:
-            resp = requests.post(
-                "http://localhost:11434/api/chat",
+            resp = self.ollama_havuzu.post(
+                "/api/chat",
+                model_adi=model_adi,
                 json=payload,
                 stream=True,
                 timeout=(10, 180)
@@ -2065,8 +2079,9 @@ class AltarMainUI(AltarArayuzMerkezi):
                     pass
                 son_kullanici = [m for m in temiz_mesajlar if m.get('role') == 'user']
                 kurtarma_msgs = [son_kullanici[-1]] if son_kullanici else [{'role': 'user', 'content': 'Merhaba'}]
-                resp = requests.post(
-                    "http://localhost:11434/api/chat",
+                resp = self.ollama_havuzu.post(
+                    "/api/chat",
+                    model_adi=model_adi,
                     json={
                         "model": model_adi,
                         "messages": kurtarma_msgs,
@@ -2225,8 +2240,9 @@ class AltarMainUI(AltarArayuzMerkezi):
                 ozet_sonuc = ""
                 if aktif_motor == "Yerel (Ollama)":
                     with self._ollama_kilit:
-                        yanit_ozet = requests.post(
-                            "http://localhost:11434/api/generate",
+                        yanit_ozet = self.ollama_havuzu.post(
+                            "/api/generate",
+                            model_adi=model_adi,
                             json={
                                 "model": model_adi,
                                 "prompt": ozet_istemi,
@@ -2307,6 +2323,13 @@ class AltarMainUI(AltarArayuzMerkezi):
     # =====================================================================
     def model_ile_konus(self, model_adi, dil_secimi, girdi, resim_yolu=None):
         if not self.yapay_zeka_aktif:
+            return
+        if self.ollama_havuzu is None:
+            self.log_to_chat(
+                "HATA",
+                f"Ollama worker havuzu başlatılamadı: {self.ollama_hata or 'Bilinmeyen bağlantı hatası'}",
+                final=True
+            )
             return
 
         # Akıllı Model Çözümleme: Model Otomatik ise veya resim varken model vision değilse uygun modeli bağla:
@@ -2603,8 +2626,9 @@ class AltarMainUI(AltarArayuzMerkezi):
                     # Boş yanıt koruması: eğer model ilk akışta boş döndüyse tek seferlik doğrudan kurtarma çağrısı yap
                     if not tam_cevap.strip() and self.yapay_zeka_aktif:
                         try:
-                            yedek_yanit = requests.post(
-                                "http://localhost:11434/api/chat",
+                            yedek_yanit = self.ollama_havuzu.post(
+                                "/api/chat",
+                                model_adi=model_adi,
                                 json={
                                     "model": model_adi,
                                     "messages": gonderilecek_mesajlar[-2:] if len(gonderilecek_mesajlar) > 2 else gonderilecek_mesajlar,
@@ -2929,9 +2953,10 @@ class AltarMainUI(AltarArayuzMerkezi):
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()
+    uzak_ollama_yapilandirildi = bool(os.getenv("ALTAR_OLLAMA_HOSTS", "").strip())
     try:
         from altar_ollama_kurucu import ollama_kurulum_gerekli_mi, otomatik_sinematik_kurulum_baslat
-        if ollama_kurulum_gerekli_mi():
+        if not uzak_ollama_yapilandirildi and ollama_kurulum_gerekli_mi():
             otomatik_sinematik_kurulum_baslat()
             sys.exit(0)
     except Exception:

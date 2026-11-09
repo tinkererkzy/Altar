@@ -56,6 +56,16 @@ class AltarAgenticCore:
 
         ham = ""
         with self._kilit:
+            if getattr(self.client, "havuz", None) is not None:
+                ek_parametreler = {"options": opts, "think": False}
+                if json_modu:
+                    ek_parametreler["format"] = "json"
+                yanit = self.client.generate(model=model_adi, prompt=prompt, **ek_parametreler)
+                ham = yanit.get("response", "") if isinstance(yanit, dict) else getattr(yanit, "response", "")
+                if not ham and isinstance(yanit, dict) and yanit.get("thinking", ""):
+                    ham = _RE_THOUGHT_TAGS.sub("", yanit["thinking"]).strip()
+                return _RE_THOUGHT_TAGS.sub("", ham).strip()
+
             try:
                 resp = requests.post("http://localhost:11434/api/generate", json=payload, timeout=120)
                 if resp.status_code == 200:
